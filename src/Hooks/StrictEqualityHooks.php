@@ -1,6 +1,6 @@
 <?php declare(strict_types=1);
 
-namespace Orklah\StrictTypes\Hooks;
+namespace Orklah\StrictEquality\Hooks;
 
 use PhpParser\Node\Expr\BinaryOp\Equal;
 use Psalm\FileManipulation;

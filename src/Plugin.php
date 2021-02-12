@@ -1,7 +1,7 @@
 <?php declare(strict_types=1);
-namespace Orklah\StrictTypes;
+namespace Orklah\StrictEquality;
 
-use Orklah\StrictTypes\Hooks\StrictEqualityHooks;
+use Orklah\StrictEquality\Hooks\StrictEqualityHooks;
 use SimpleXMLElement;
 use Psalm\Plugin\PluginEntryPointInterface;
 use Psalm\Plugin\RegistrationInterface;
