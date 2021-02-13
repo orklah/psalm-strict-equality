@@ -42,11 +42,17 @@ class StrictEqualityHooks implements AfterExpressionAnalysisInterface
         $right_type_single = array_pop($right_type_atomics);
 
         if (self::isCompatibleType($left_type_single, $right_type_single)) {
-            $file_manipulation = new FileManipulation($expr->left->getEndFilePos() + 1, $expr->right->getStartFilePos(), ' === ');
-            $event->setFileReplacements([$file_manipulation]);
+            $startPos = $expr->left->getEndFilePos();
+            $endPos = $expr->right->getStartFilePos();
+            $length = $endPos - $startPos;
+            if($length >= 2 && $length <= 4) {
+                $file_manipulation = new FileManipulation($expr->left->getEndFilePos() + 1, $expr->right->getStartFilePos(), ' === ');
+                $event->setFileReplacements([$file_manipulation]);
+            }
         }
 
         //solve more cases, for examples, numeric-string vs string
+        //Double TLiteral string, check direct?
         return true;
     }
 
