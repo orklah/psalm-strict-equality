@@ -42,11 +42,11 @@ class StrictEqualityHooks implements AfterExpressionAnalysisInterface
         $right_type_single = array_pop($right_type_atomics);
 
         if (self::isCompatibleType($left_type_single, $right_type_single)) {
-            $startPos = $expr->left->getEndFilePos();
+            $startPos = $expr->left->getEndFilePos() + 1;
             $endPos = $expr->right->getStartFilePos();
             $length = $endPos - $startPos;
             if($length >= 2 && $length <= 4) {
-                $file_manipulation = new FileManipulation($expr->left->getEndFilePos() + 1, $expr->right->getStartFilePos(), ' === ');
+                $file_manipulation = new FileManipulation($startPos, $endPos, ' === ');
                 $event->setFileReplacements([$file_manipulation]);
             }
         }
