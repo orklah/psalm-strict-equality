@@ -3,6 +3,7 @@
 namespace Orklah\StrictEquality\Hooks;
 
 use PhpParser\Node\Expr\BinaryOp\Equal;
+use PhpParser\Node\Scalar;
 use Psalm\FileManipulation;
 use Psalm\Plugin\EventHandler\AfterExpressionAnalysisInterface;
 use Psalm\Plugin\EventHandler\Event\AfterExpressionAnalysisEvent;
@@ -22,6 +23,11 @@ class StrictEqualityHooks implements AfterExpressionAnalysisInterface
 
         $left_type = $node_provider->getType($expr->left);
         $right_type = $node_provider->getType($expr->right);
+
+        //if (!$expr->left instanceof Scalar && !$expr->right instanceof Scalar) {
+        //    //toggle for allowing only when one element is a scala
+        //    return true;
+        //}
 
         if ($left_type === null || $right_type === null) {
             return true;
@@ -45,7 +51,7 @@ class StrictEqualityHooks implements AfterExpressionAnalysisInterface
             $startPos = $expr->left->getEndFilePos() + 1;
             $endPos = $expr->right->getStartFilePos();
             $length = $endPos - $startPos;
-            if($length >= 2 && $length <= 4) {
+            if ($length >= 2 && $length <= 4) {
                 $file_manipulation = new FileManipulation($startPos, $endPos, ' === ');
                 $event->setFileReplacements([$file_manipulation]);
             }
