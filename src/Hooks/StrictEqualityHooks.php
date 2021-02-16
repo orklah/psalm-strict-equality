@@ -64,32 +64,40 @@ class StrictEqualityHooks implements AfterExpressionAnalysisInterface
 
     private static function isCompatibleType(Atomic $left_type_single, Atomic $right_type_single): bool
     {
-        if ($left_type_single instanceof Atomic\TString && $right_type_single instanceof Atomic\TString) {
-            return true;
-        }
-
-        if ($left_type_single instanceof Atomic\TInt && $right_type_single instanceof Atomic\TInt) {
-            return true;
-        }
-
-        if ($left_type_single instanceof Atomic\TFloat && $right_type_single instanceof Atomic\TFloat) {
-            return true;
-        }
-
-        if ($left_type_single instanceof Atomic\TBool && $right_type_single instanceof Atomic\TBool) {
-            return true;
-        }
-
-        if ($left_type_single instanceof Atomic\TArray && $right_type_single instanceof Atomic\TArray) {
-            return true;
-        }
-
-        if ($left_type_single instanceof Atomic\TKeyedArray && $right_type_single instanceof Atomic\TKeyedArray) {
-            return true;
-        }
-
-        //KeyedArray vs Array
-        return false;
+        //This is just a trick to avoid handling every way
+        return self::isCompatibleTypeOrdered($left_type_single, $right_type_single) || self::isCompatibleTypeOrdered($right_type_single, $left_type_single);
     }
 
+    private static function isCompatibleTypeOrdered(Atomic $first_type, Atomic $second_type){
+        if ($first_type instanceof Atomic\TString && $second_type instanceof Atomic\TString) {
+            // oh god, I hate this: https://3v4l.org/O7RXC
+            return true;
+        }
+
+        if ($first_type instanceof Atomic\TInt && $second_type instanceof Atomic\TInt) {
+            return true;
+        }
+
+        if ($first_type instanceof Atomic\TFloat && $second_type instanceof Atomic\TFloat) {
+            return true;
+        }
+
+        if ($first_type instanceof Atomic\TBool && $second_type instanceof Atomic\TBool) {
+            return true;
+        }
+
+        if ($first_type instanceof Atomic\TArray && $second_type instanceof Atomic\TArray) {
+            return true;
+        }
+
+        if ($first_type instanceof Atomic\TKeyedArray && $second_type instanceof Atomic\TKeyedArray) {
+            return true;
+        }
+
+        if ($first_type instanceof Atomic\TKeyedArray && $second_type instanceof Atomic\TArray) {
+            return true;
+        }
+
+        return false;
+    }
 }
