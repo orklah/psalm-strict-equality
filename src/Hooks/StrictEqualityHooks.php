@@ -13,6 +13,20 @@ use function get_class;
 
 class StrictEqualityHooks implements AfterExpressionAnalysisInterface
 {
+    const literal_types = [
+        Atomic\TLiteralClassString::class,
+        Atomic\TLiteralFloat::class,
+        Atomic\TLiteralInt::class,
+        Atomic\TLiteralString::class,
+    ];
+
+    const never_falsy_types = [
+        Atomic\TClassString::class,
+        Atomic\TLiteralClassString::class,
+        Atomic\TNonFalsyString::class,
+        Atomic\TTrue::class,
+        Atomic\TObject::class,
+    ];
 
     public static function afterExpressionAnalysis(AfterExpressionAnalysisEvent $event): ?bool
     {
@@ -52,12 +66,13 @@ class StrictEqualityHooks implements AfterExpressionAnalysisInterface
         $left_type_single = array_pop($left_type_atomics);
         $right_type_single = array_pop($right_type_atomics);
 
-        if (self::isCompatibleType($left_type_single, $right_type_single, get_class($expr))) {
+        $expr_class = get_class($expr);
+        if (self::isCompatibleType($left_type_single, $right_type_single, $expr_class)) {
             $startPos = $expr->left->getEndFilePos() + 1;
             $endPos = $expr->right->getStartFilePos();
             $length = $endPos - $startPos;
             if ($length >= 2 && $length <= 4) {
-                $file_manipulation = new FileManipulation($startPos, $endPos, ' === ');
+                $file_manipulation = new FileManipulation($startPos, $endPos, $expr_class === Equal::class ? ' === ' : '!==');
                 $event->setFileReplacements([$file_manipulation]);
             }
         }
@@ -111,6 +126,16 @@ class StrictEqualityHooks implements AfterExpressionAnalysisInterface
             return true;
         }
 
+        //Any literal string not numeric with any int
+        //Any literal string not numeric with any float
+        //Any non-falsy-string with true
+        //Any literal-string not falsy with true
+        //Any literal-string empty with false
+        //Any string with any array
+        //Any non-empty-string with null
+        //Any Literal Int 0 with null
+        //Any positive int with null
+        //Any literal int not 0 with null
         return false;
     }
 
