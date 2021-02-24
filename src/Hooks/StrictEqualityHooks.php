@@ -4,7 +4,11 @@ namespace Orklah\StrictEquality\Hooks;
 
 use PhpParser\Node\Expr\BinaryOp\Equal;
 use PhpParser\Node\Expr\BinaryOp\NotEqual;
+use Psalm\CodeLocation;
 use Psalm\FileManipulation;
+use Psalm\Issue\CodeIssue;
+use Psalm\IssueBuffer;
+use Psalm\Node\VirtualNode;
 use Psalm\Plugin\EventHandler\AfterExpressionAnalysisInterface;
 use Psalm\Plugin\EventHandler\Event\AfterExpressionAnalysisEvent;
 use Psalm\Type\Atomic;
@@ -13,28 +17,19 @@ use function get_class;
 
 class StrictEqualityHooks implements AfterExpressionAnalysisInterface
 {
-    const literal_types = [
-        Atomic\TLiteralClassString::class,
-        Atomic\TLiteralFloat::class,
-        Atomic\TLiteralInt::class,
-        Atomic\TLiteralString::class,
-    ];
-
-    const never_falsy_types = [
-        Atomic\TClassString::class,
-        Atomic\TLiteralClassString::class,
-        Atomic\TNonFalsyString::class,
-        Atomic\TTrue::class,
-        Atomic\TObject::class,
-    ];
 
     public static function afterExpressionAnalysis(AfterExpressionAnalysisEvent $event): ?bool
     {
-        if(!$event->getCodebase()->alter_code){
+        if (!$event->getCodebase()->alter_code) {
             return true;
         }
 
         $expr = $event->getExpr();
+        if ($expr instanceof VirtualNode) {
+            // This is a node created by Psalm for analysis purposes. This is not interesting
+            return true;
+        }
+
         $node_provider = $event->getStatementsSource()->getNodeTypeProvider();
         if (!$expr instanceof Equal && !$expr instanceof NotEqual) {
             return true;
@@ -42,11 +37,6 @@ class StrictEqualityHooks implements AfterExpressionAnalysisInterface
 
         $left_type = $node_provider->getType($expr->left);
         $right_type = $node_provider->getType($expr->right);
-
-        //if (!$expr->left instanceof Scalar && !$expr->right instanceof Scalar) {
-        //    //toggle for allowing only when one element is a scala
-        //    return true;
-        //}
 
         if ($left_type === null || $right_type === null) {
             return true;
@@ -70,15 +60,11 @@ class StrictEqualityHooks implements AfterExpressionAnalysisInterface
         if (self::isCompatibleType($left_type_single, $right_type_single, $expr_class)) {
             $startPos = $expr->left->getEndFilePos() + 1;
             $endPos = $expr->right->getStartFilePos();
-            $length = $endPos - $startPos;
-            if ($length >= 2 && $length <= 4) {
-                $file_manipulation = new FileManipulation($startPos, $endPos, $expr_class === Equal::class ? ' === ' : '!==');
-                $event->setFileReplacements([$file_manipulation]);
-            }
+
+            $file_manipulation = new FileManipulation($startPos, $endPos, $expr_class === Equal::class ? ' === ' : ' !== ');
+            $event->setFileReplacements([$file_manipulation]);
         }
 
-        //solve more cases, for examples, numeric-string vs string
-        //Double TLiteral string, check direct?
         return true;
     }
 
@@ -87,16 +73,16 @@ class StrictEqualityHooks implements AfterExpressionAnalysisInterface
      */
     private static function isCompatibleType(Atomic $left_type_single, Atomic $right_type_single, string $expr_class): bool
     {
-        if($expr_class === Equal::class) {
+        if ($expr_class === Equal::class) {
             //This is just a trick to avoid handling every way
             return self::isEqualOrdered($left_type_single, $right_type_single) || self::isEqualOrdered($right_type_single, $left_type_single);
-        }
-        else{
+        } else {
             return self::isNotEqualOrdered($left_type_single, $right_type_single) || self::isNotEqualOrdered($right_type_single, $left_type_single);
         }
     }
 
-    private static function isEqualOrdered(Atomic $first_type, Atomic $second_type): bool{
+    private static function isEqualOrdered(Atomic $first_type, Atomic $second_type): bool
+    {
         if ($first_type instanceof Atomic\TString && $second_type instanceof Atomic\TString) {
             // oh god, I hate this: https://3v4l.org/O7RXC
             return true;
@@ -126,16 +112,6 @@ class StrictEqualityHooks implements AfterExpressionAnalysisInterface
             return true;
         }
 
-        //Any literal string not numeric with any int
-        //Any literal string not numeric with any float
-        //Any non-falsy-string with true
-        //Any literal-string not falsy with true
-        //Any literal-string empty with false
-        //Any string with any array
-        //Any non-empty-string with null
-        //Any Literal Int 0 with null
-        //Any positive int with null
-        //Any literal int not 0 with null
         return false;
     }
 
