@@ -6,7 +6,7 @@ use PhpParser\Node\Expr\BinaryOp\Equal;
 use PhpParser\Node\Expr\BinaryOp\NotEqual;
 use Psalm\CodeLocation;
 use Psalm\FileManipulation;
-use Psalm\Issue\CodeIssue;
+use Psalm\Issue\PluginIssue;
 use Psalm\IssueBuffer;
 use Psalm\Node\VirtualNode;
 use Psalm\Plugin\EventHandler\AfterExpressionAnalysisInterface;
@@ -20,10 +20,6 @@ class StrictEqualityHooks implements AfterExpressionAnalysisInterface
 
     public static function afterExpressionAnalysis(AfterExpressionAnalysisEvent $event): ?bool
     {
-        if (!$event->getCodebase()->alter_code) {
-            return true;
-        }
-
         $expr = $event->getExpr();
         if ($expr instanceof VirtualNode) {
             // This is a node created by Psalm for analysis purposes. This is not interesting
@@ -32,6 +28,19 @@ class StrictEqualityHooks implements AfterExpressionAnalysisInterface
 
         $node_provider = $event->getStatementsSource()->getNodeTypeProvider();
         if (!$expr instanceof Equal && !$expr instanceof NotEqual) {
+            return true;
+        }
+
+        $statements_source = $event->getStatementsSource();
+
+        //start by emitting an issue that can be added into the baseline to avoid adding new ones
+        $issue = new NotStrictEqualSign(
+            'Using ' . $expr->getOperatorSigil() . ' is deprecated by orklah/psalm-strict-equality',
+            new CodeLocation($statements_source, $expr)
+        );
+        IssueBuffer::accepts($issue, $statements_source->getSuppressedIssues());
+
+        if (!$event->getCodebase()->alter_code) {
             return true;
         }
 
@@ -148,4 +157,8 @@ class StrictEqualityHooks implements AfterExpressionAnalysisInterface
 
         return false;
     }
+}
+
+class NotStrictEqualSign extends PluginIssue
+{
 }
