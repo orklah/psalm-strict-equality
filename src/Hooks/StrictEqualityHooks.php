@@ -185,7 +185,7 @@ class StrictEqualityHooks implements AfterExpressionAnalysisInterface
         }
     }
 
-    private static function isUnionEqualOrdered(array $first_types, array $second_types): bool
+    private static function isUnionStringEqualOrdered(array $first_types, array $second_types): bool
     {
         foreach ($first_types as $atomic_type) {
             if ($atomic_type instanceof Atomic\TNonEmptyString) {
@@ -244,6 +244,48 @@ class StrictEqualityHooks implements AfterExpressionAnalysisInterface
             }
 
             if ($atomic_type instanceof Atomic\TClosedResource) {
+                continue;
+            }
+
+            return false;
+        }
+
+        return true;
+    }
+
+    private static function isUnionStringNotEqualOrdered(array $first_types, array $second_types): bool
+    {
+        // identical at the moment
+        return self::isUnionStringEqualOrdered($first_types, $second_types);
+    }
+
+    private static function isUnionEqualOrdered(array $first_types, array $second_types): bool {
+        $top_level_class = false;
+        foreach ($first_types as $atomic_type) {
+            if ($top_level_class === false) {
+                $top_level_class = $atomic_type;
+                continue;
+            }
+
+            if ($atomic_type instanceof $top_level_class) {
+                continue;
+            }
+
+            if ($top_level_class instanceof $atomic_type) {
+                $top_level_class = $atomic_type;
+                continue;
+            }
+
+            return false;
+        }
+
+        foreach ($second_types as $atomic_type) {
+            if ($atomic_type instanceof $top_level_class) {
+                continue;
+            }
+
+            if ($top_level_class instanceof $atomic_type) {
+                $top_level_class = $atomic_type;
                 continue;
             }
 
