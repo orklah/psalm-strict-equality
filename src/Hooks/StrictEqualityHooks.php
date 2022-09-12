@@ -126,36 +126,8 @@ class StrictEqualityHooks implements AfterExpressionAnalysisInterface
 
     private static function isNotEqualOrdered(Atomic $first_type, Atomic $second_type): bool
     {
-        if ($first_type instanceof Atomic\TString && $second_type instanceof Atomic\TString) {
-            // oh god, I hate this: https://3v4l.org/O7RXC
-            return true;
-        }
-
-        if ($first_type instanceof Atomic\TInt && $second_type instanceof Atomic\TInt) {
-            return true;
-        }
-
-        if ($first_type instanceof Atomic\TFloat && $second_type instanceof Atomic\TFloat) {
-            return true;
-        }
-
-        if ($first_type instanceof Atomic\TBool && $second_type instanceof Atomic\TBool) {
-            return true;
-        }
-
-        if ($first_type instanceof Atomic\TArray && $second_type instanceof Atomic\TArray) {
-            return true;
-        }
-
-        if ($first_type instanceof Atomic\TKeyedArray && $second_type instanceof Atomic\TKeyedArray) {
-            return true;
-        }
-
-        if ($first_type instanceof Atomic\TKeyedArray && $second_type instanceof Atomic\TArray) {
-            return true;
-        }
-
-        return false;
+        // identical at the moment
+        return self::isEqualOrdered($first_type, $second_type);
     }
 }
 
