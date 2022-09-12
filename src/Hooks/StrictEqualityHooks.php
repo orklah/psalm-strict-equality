@@ -5,6 +5,7 @@ namespace Orklah\StrictEquality\Hooks;
 use PhpParser\Node\Expr\BinaryOp\Equal;
 use PhpParser\Node\Expr\BinaryOp\NotEqual;
 use Psalm\CodeLocation;
+use Psalm\Config;
 use Psalm\FileManipulation;
 use Psalm\Issue\PluginIssue;
 use Psalm\IssueBuffer;
@@ -52,7 +53,18 @@ class StrictEqualityHooks implements AfterExpressionAnalysisInterface
         }
 
         if ($left_type->from_docblock || $right_type->from_docblock) {
-            return true;// this is risky
+            $config = Config::getInstance();
+            foreach ($config->getPluginClasses() as $plugin) {
+                if ($plugin['class'] != 'Orklah\StrictEquality\Plugin') {
+                    continue;
+                }
+
+                if (!isset($plugin['config']->strictEqualityFromDocblock['value']) || (string) $plugin['config']->strictEqualityFromDocblock['value'] !== 'true') {
+                    return true;
+                }
+
+                break;
+            }
         }
 
         $left_type_atomics = $left_type->getAtomicTypes();
