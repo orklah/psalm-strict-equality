@@ -12,8 +12,8 @@ use Psalm\Node\VirtualNode;
 use Psalm\Plugin\EventHandler\AfterExpressionAnalysisInterface;
 use Psalm\Plugin\EventHandler\Event\AfterExpressionAnalysisEvent;
 use Psalm\Type\Atomic;
+use function end;
 use function get_class;
-
 
 class StrictEqualityHooks implements AfterExpressionAnalysisInterface
 {
@@ -55,18 +55,19 @@ class StrictEqualityHooks implements AfterExpressionAnalysisInterface
             return true;// this is risky
         }
 
-        if (!$left_type->isSingle() || !$right_type->isSingle()) {
-            return true; // may be refined later
-        }
-
         $left_type_atomics = $left_type->getAtomicTypes();
         $right_type_atomics = $right_type->getAtomicTypes();
 
-        $left_type_single = array_pop($left_type_atomics);
-        $right_type_single = array_pop($right_type_atomics);
-
         $expr_class = get_class($expr);
-        if (self::isCompatibleType($left_type_single, $right_type_single, $expr_class)) {
+        if ($left_type->isSingle() && $right_type->isSingle()) {
+            $left_type_single = end($left_type_atomics);
+            $right_type_single = end($right_type_atomics);
+            $fixable = self::isCompatibleType($left_type_single, $right_type_single, $expr_class);
+        } else {
+            $fixable = self::isUnionCompatibleType($left_type_atomics, $right_type_atomics, $expr_class);
+        }
+
+        if ($fixable === true) {
             $startPos = $expr->left->getEndFilePos() + 1;
             $endPos = $expr->right->getStartFilePos();
 
@@ -168,6 +169,89 @@ class StrictEqualityHooks implements AfterExpressionAnalysisInterface
     {
         // identical at the moment
         return self::isEqualOrdered($first_type, $second_type);
+    }
+
+    private static function isUnionCompatibleType(array $left_type_atomics, array $right_type_atomics, string $expr_class): bool {
+        if ($expr_class === Equal::class) {
+            //This is just a trick to avoid handling every way
+            return self::isUnionEqualOrdered($left_type_atomics, $right_type_atomics) || self::isUnionEqualOrdered($right_type_atomics, $left_type_atomics);
+        } else {
+            return self::isUnionNotEqualOrdered($left_type_atomics, $right_type_atomics) || self::isUnionNotEqualOrdered($right_type_atomics, $left_type_atomics);
+        }
+    }
+
+    private static function isUnionEqualOrdered(array $first_types, array $second_types): bool
+    {
+        foreach ($first_types as $atomic_type) {
+            if ($atomic_type instanceof Atomic\TNonEmptyString) {
+                $with_null = true;
+                continue;
+            }
+
+            if ($atomic_type instanceof Atomic\TString) {
+                $with_null = false;
+                continue;
+            }
+
+            // only single, not-union string is fixable at the moment
+            return false;
+        }
+
+        foreach ($second_types as $atomic_type) {
+            if ($atomic_type instanceof Atomic\TString) {
+                continue;
+            }
+
+            if ($with_null === true && $atomic_type instanceof Atomic\TNull) {
+                continue;
+            }
+
+            if ($atomic_type instanceof Atomic\TArray) {
+                continue;
+            }
+
+            if ($atomic_type instanceof Atomic\TKeyedArray) {
+                continue;
+            }
+
+            if ($atomic_type instanceof Atomic\TList) {
+                continue;
+            }
+
+            if ($atomic_type instanceof Atomic\TIterable) {
+                continue;
+            }
+
+            if ($atomic_type instanceof Atomic\TObject) {
+                continue;
+            }
+
+            if ($atomic_type instanceof Atomic\TNamedObject) {
+                continue;
+            }
+
+            if ($atomic_type instanceof Atomic\TCallable) {
+                continue;
+            }
+
+            if ($atomic_type instanceof Atomic\TResource) {
+                continue;
+            }
+
+            if ($atomic_type instanceof Atomic\TClosedResource) {
+                continue;
+            }
+
+            return false;
+        }
+
+        return true;
+    }
+
+    private static function isUnionNotEqualOrdered(array $first_types, array $second_types): bool
+    {
+        // identical at the moment
+        return self::isUnionEqualOrdered($first_types, $second_types);
     }
 }
 
