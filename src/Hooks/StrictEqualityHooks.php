@@ -162,6 +162,11 @@ class StrictEqualityHooks implements AfterExpressionAnalysisInterface
             return true;
         }
 
+        // generic same or parent class
+        if ($first_type instanceof $second_type) {
+            return true;
+        }
+
         return false;
     }
 
