@@ -122,47 +122,15 @@ class StrictEqualityHooks implements AfterExpressionAnalysisInterface
             return true;
         }
 
-        if ($first_type instanceof Atomic\TArray && $second_type instanceof Atomic\TArray) {
-            return true;
-        }
-
-        if ($first_type instanceof Atomic\TKeyedArray && $second_type instanceof Atomic\TKeyedArray) {
-            return true;
-        }
-
-        if ($first_type instanceof Atomic\TKeyedArray && $second_type instanceof Atomic\TArray) {
-            return true;
-        }
-
-        if ($first_type instanceof Atomic\TKeyedArray && $second_type instanceof Atomic\TList) {
-            return true;
-        }
-
-        if ($first_type instanceof Atomic\TKeyedArray && $second_type instanceof Atomic\TIterable) {
-            return true;
-        }
-
         if ($first_type instanceof Atomic\TList && $second_type instanceof Atomic\TList) {
             return true;
         }
 
-        if ($first_type instanceof Atomic\TList && $second_type instanceof Atomic\TArray) {
-            return true;
+        if ($first_type instanceof Atomic\TIterable || $first_type instanceof Atomic\TKeyedArray || $first_type instanceof Atomic\TArray) {
+            return false;
         }
 
-        if ($first_type instanceof Atomic\TList && $second_type instanceof Atomic\TIterable) {
-            return true;
-        }
-
-        if ($first_type instanceof Atomic\TIterable && $second_type instanceof Atomic\TIterable) {
-            return true;
-        }
-
-        if ($first_type instanceof Atomic\TIterable && $second_type instanceof Atomic\TArray) {
-            return true;
-        }
-
-        if ($first_type instanceof Atomic\TObject && $second_type instanceof Atomic\TObject) {
+        if ($first_type instanceof Atomic\TNamedObject && $second_type instanceof Atomic\TNamedObject) {
             return true;
         }
 
@@ -170,7 +138,7 @@ class StrictEqualityHooks implements AfterExpressionAnalysisInterface
             return true;
         }
 
-        if ($first_type instanceof Atomic\TNamedObject && $second_type instanceof Atomic\TNamedObject) {
+        if ($first_type instanceof Atomic\TObject && $second_type instanceof Atomic\TObject) {
             return true;
         }
 
@@ -288,6 +256,10 @@ class StrictEqualityHooks implements AfterExpressionAnalysisInterface
                 continue;
             }
 
+            return false;
+        }
+
+        if (!($top_level_class instanceof Atomic\TList) && $top_level_class instanceof Atomic\TArray) {
             return false;
         }
 
