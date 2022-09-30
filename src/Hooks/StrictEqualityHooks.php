@@ -27,7 +27,6 @@ class StrictEqualityHooks implements AfterExpressionAnalysisInterface
             return true;
         }
 
-        $node_provider = $event->getStatementsSource()->getNodeTypeProvider();
         if (!$expr instanceof Equal && !$expr instanceof NotEqual) {
             return true;
         }
@@ -45,6 +44,7 @@ class StrictEqualityHooks implements AfterExpressionAnalysisInterface
             return true;
         }
 
+        $node_provider = $event->getStatementsSource()->getNodeTypeProvider();
         $left_type = $node_provider->getType($expr->left);
         $right_type = $node_provider->getType($expr->right);
 
@@ -122,24 +122,11 @@ class StrictEqualityHooks implements AfterExpressionAnalysisInterface
             return true;
         }
 
-        if ($first_type instanceof Atomic\TList && $second_type instanceof Atomic\TList) {
+        // array/objects are somewhat safe to compare against strings
+        if (self::isTooComplicatedType($first_type) && $second_type instanceof Atomic\TString) {
             return true;
-        }
-
-        if ($first_type instanceof Atomic\TIterable || $first_type instanceof Atomic\TKeyedArray || $first_type instanceof Atomic\TArray) {
+        } elseif (self::isTooComplicatedType($first_type)) {
             return false;
-        }
-
-        if ($first_type instanceof Atomic\TNamedObject && $second_type instanceof Atomic\TNamedObject) {
-            return true;
-        }
-
-        if ($first_type instanceof Atomic\TObject && $second_type instanceof Atomic\TNamedObject) {
-            return true;
-        }
-
-        if ($first_type instanceof Atomic\TObject && $second_type instanceof Atomic\TObject) {
-            return true;
         }
 
         // generic same or parent class
@@ -159,9 +146,11 @@ class StrictEqualityHooks implements AfterExpressionAnalysisInterface
     private static function isUnionCompatibleType(array $left_type_atomics, array $right_type_atomics, string $expr_class): bool {
         if ($expr_class === Equal::class) {
             //This is just a trick to avoid handling every way
-            return self::isUnionEqualOrdered($left_type_atomics, $right_type_atomics) || self::isUnionEqualOrdered($right_type_atomics, $left_type_atomics);
+            return self::isUnionEqualOrdered($left_type_atomics, $right_type_atomics) || self::isUnionEqualOrdered($right_type_atomics, $left_type_atomics) ||
+                   self::isUnionStringEqualOrdered($left_type_atomics, $right_type_atomics) || self::isUnionStringEqualOrdered($right_type_atomics, $left_type_atomics);
         } else {
-            return self::isUnionNotEqualOrdered($left_type_atomics, $right_type_atomics) || self::isUnionNotEqualOrdered($right_type_atomics, $left_type_atomics);
+            return self::isUnionNotEqualOrdered($left_type_atomics, $right_type_atomics) || self::isUnionNotEqualOrdered($right_type_atomics, $left_type_atomics) ||
+                   self::isUnionStringNotEqualOrdered($left_type_atomics, $right_type_atomics) || self::isUnionStringNotEqualOrdered($right_type_atomics, $left_type_atomics);
         }
     }
 
@@ -178,7 +167,6 @@ class StrictEqualityHooks implements AfterExpressionAnalysisInterface
                 continue;
             }
 
-            // only single, not-union string is fixable at the moment
             return false;
         }
 
@@ -191,27 +179,8 @@ class StrictEqualityHooks implements AfterExpressionAnalysisInterface
                 continue;
             }
 
-            if ($atomic_type instanceof Atomic\TArray) {
-                continue;
-            }
-
-            if ($atomic_type instanceof Atomic\TKeyedArray) {
-                continue;
-            }
-
-            if ($atomic_type instanceof Atomic\TList) {
-                continue;
-            }
-
-            if ($atomic_type instanceof Atomic\TIterable) {
-                continue;
-            }
-
-            if ($atomic_type instanceof Atomic\TObject) {
-                continue;
-            }
-
-            if ($atomic_type instanceof Atomic\TNamedObject) {
+            // array/objects are somewhat safe to compare against strings
+            if (self::isTooComplicatedType($atomic_type)) {
                 continue;
             }
 
@@ -259,7 +228,7 @@ class StrictEqualityHooks implements AfterExpressionAnalysisInterface
             return false;
         }
 
-        if (!($top_level_class instanceof Atomic\TList) && $top_level_class instanceof Atomic\TArray) {
+        if (self::isTooComplicatedType($top_level_class)) {
             return false;
         }
 
@@ -283,6 +252,25 @@ class StrictEqualityHooks implements AfterExpressionAnalysisInterface
     {
         // identical at the moment
         return self::isUnionEqualOrdered($first_types, $second_types);
+    }
+
+    private static function isTooComplicatedType(Atomic $type) {
+        $too_complicated_types = array(
+            Atomic\TKeyedArray::class,
+            Atomic\TArray::class,
+            Atomic\TList::class,
+            Atomic\TIterable::class,
+            Atomic\TNamedObject::class,
+            Atomic\TObject::class,
+        );
+
+        foreach ($too_complicated_types as $compare) {
+            if ($type instanceof $compare || $compare instanceof $type) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }
 
