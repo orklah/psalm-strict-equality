@@ -122,6 +122,23 @@ class StrictEqualityHooks implements AfterExpressionAnalysisInterface
             return true;
         }
 
+        // insane comparisons
+        if ($first_type instanceof Atomic\TFalse && $second_type instanceof Atomic\TNonFalsyString) {
+            return true;
+        }
+
+        if ($first_type instanceof Atomic\TFalse && $second_type instanceof Atomic\TLiteralString) {
+            if ((bool) $second_type->value === true) {
+                return true;
+            }
+        }
+
+        if ($first_type instanceof Atomic\TTrue && $second_type instanceof Atomic\TLiteralString) {
+            if ((bool) $second_type->value === false) {
+                return true;
+            }
+        }
+
         // array/objects are somewhat safe to compare against strings
         if (self::isTooComplicatedType($first_type) && $second_type instanceof Atomic\TString) {
             return true;
@@ -157,12 +174,39 @@ class StrictEqualityHooks implements AfterExpressionAnalysisInterface
     private static function isUnionStringEqualOrdered(array $first_types, array $second_types): bool
     {
         foreach ($first_types as $atomic_type) {
+            if ($atomic_type instanceof Atomic\TNonFalsyString) {
+                $with_false = true;
+                $with_true = false;
+                $with_null = true;
+                continue;
+            }
+
+            if ($atomic_type instanceof Atomic\TLiteralString) {
+                if ((bool) $atomic_type->value === true) {
+                    $with_false = true;
+                    $with_true = false;
+                } else {
+                    $with_false = false;
+                    $with_true = true;
+                }
+
+                $with_null = false;
+                if ($atomic_type->value !== '') {
+                    $with_null = true;
+                }
+                continue;
+            }
+
             if ($atomic_type instanceof Atomic\TNonEmptyString) {
+                $with_false = false;
+                $with_true = false;
                 $with_null = true;
                 continue;
             }
 
             if ($atomic_type instanceof Atomic\TString) {
+                $with_false = false;
+                $with_true = false;
                 $with_null = false;
                 continue;
             }
@@ -172,6 +216,14 @@ class StrictEqualityHooks implements AfterExpressionAnalysisInterface
 
         foreach ($second_types as $atomic_type) {
             if ($atomic_type instanceof Atomic\TString) {
+                continue;
+            }
+
+            if ($with_true === true && $atomic_type instanceof Atomic\TTrue) {
+                continue;
+            }
+
+            if ($with_false === true && $atomic_type instanceof Atomic\TFalse) {
                 continue;
             }
 
