@@ -173,31 +173,41 @@ class StrictEqualityHooks implements AfterExpressionAnalysisInterface
 
     private static function isUnionStringEqualOrdered(array $first_types, array $second_types): bool
     {
+        $generic_string = false;
+        $non_empty_string = false;
+        $literal_string = false;
         foreach ($first_types as $atomic_type) {
-            if ($atomic_type instanceof Atomic\TNonFalsyString) {
+            if ($generic_string === false && $non_empty_string === false && $literal_string === false && $atomic_type instanceof Atomic\TNonFalsyString) {
                 $with_false = true;
                 $with_true = false;
                 $with_null = true;
                 continue;
             }
 
-            if ($atomic_type instanceof Atomic\TLiteralString) {
-                if ((bool) $atomic_type->value === true) {
+            if ($generic_string === false && $non_empty_string === false && $atomic_type instanceof Atomic\TLiteralString) {
+                $literal_string = true;
+                if ((!isset($with_false) || $with_false === true) && (bool) $atomic_type->value === true) {
                     $with_false = true;
                     $with_true = false;
-                } else {
+                } elseif ((!isset($with_false) || $with_false === false)) {
                     $with_false = false;
                     $with_true = true;
+                } else {
+                    $with_false = false;
+                    $with_true = false;
                 }
 
-                $with_null = false;
-                if ($atomic_type->value !== '') {
+                if ((!isset($with_null) || $with_null === true) && $atomic_type->value !== '') {
                     $with_null = true;
+                } else {
+                    $with_null = false;
                 }
+
                 continue;
             }
 
-            if ($atomic_type instanceof Atomic\TNonEmptyString) {
+            if ($generic_string === false && $atomic_type instanceof Atomic\TNonEmptyString) {
+                $non_empty_string = true;
                 $with_false = false;
                 $with_true = false;
                 $with_null = true;
@@ -205,6 +215,7 @@ class StrictEqualityHooks implements AfterExpressionAnalysisInterface
             }
 
             if ($atomic_type instanceof Atomic\TString) {
+                $generic_string = true;
                 $with_false = false;
                 $with_true = false;
                 $with_null = false;
