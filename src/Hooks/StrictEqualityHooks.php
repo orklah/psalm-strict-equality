@@ -5,6 +5,7 @@ namespace Orklah\StrictEquality\Hooks;
 use PhpParser\Node\Expr\BinaryOp\Equal;
 use PhpParser\Node\Expr\BinaryOp\NotEqual;
 use Psalm\CodeLocation;
+use Psalm\Config;
 use Psalm\FileManipulation;
 use Psalm\Issue\PluginIssue;
 use Psalm\IssueBuffer;
@@ -12,8 +13,8 @@ use Psalm\Node\VirtualNode;
 use Psalm\Plugin\EventHandler\AfterExpressionAnalysisInterface;
 use Psalm\Plugin\EventHandler\Event\AfterExpressionAnalysisEvent;
 use Psalm\Type\Atomic;
+use function end;
 use function get_class;
-
 
 class StrictEqualityHooks implements AfterExpressionAnalysisInterface
 {
@@ -26,7 +27,6 @@ class StrictEqualityHooks implements AfterExpressionAnalysisInterface
             return true;
         }
 
-        $node_provider = $event->getStatementsSource()->getNodeTypeProvider();
         if (!$expr instanceof Equal && !$expr instanceof NotEqual) {
             return true;
         }
@@ -44,6 +44,7 @@ class StrictEqualityHooks implements AfterExpressionAnalysisInterface
             return true;
         }
 
+        $node_provider = $event->getStatementsSource()->getNodeTypeProvider();
         $left_type = $node_provider->getType($expr->left);
         $right_type = $node_provider->getType($expr->right);
 
@@ -52,21 +53,33 @@ class StrictEqualityHooks implements AfterExpressionAnalysisInterface
         }
 
         if ($left_type->from_docblock || $right_type->from_docblock) {
-            return true;// this is risky
-        }
+            $config = Config::getInstance();
+            foreach ($config->getPluginClasses() as $plugin) {
+                if ($plugin['class'] != 'Orklah\StrictEquality\Plugin') {
+                    continue;
+                }
 
-        if (!$left_type->isSingle() || !$right_type->isSingle()) {
-            return true; // may be refined later
+                if (!isset($plugin['config']->strictEqualityFromDocblock['value']) || (string) $plugin['config']->strictEqualityFromDocblock['value'] !== 'true') {
+                    return true;
+                }
+
+                break;
+            }
         }
 
         $left_type_atomics = $left_type->getAtomicTypes();
         $right_type_atomics = $right_type->getAtomicTypes();
 
-        $left_type_single = array_pop($left_type_atomics);
-        $right_type_single = array_pop($right_type_atomics);
-
         $expr_class = get_class($expr);
-        if (self::isCompatibleType($left_type_single, $right_type_single, $expr_class)) {
+        if ($left_type->isSingle() && $right_type->isSingle()) {
+            $left_type_single = end($left_type_atomics);
+            $right_type_single = end($right_type_atomics);
+            $fixable = self::isCompatibleType($left_type_single, $right_type_single, $expr_class);
+        } else {
+            $fixable = self::isUnionCompatibleType($left_type_atomics, $right_type_atomics, $expr_class);
+        }
+
+        if ($fixable === true) {
             $startPos = $expr->left->getEndFilePos() + 1;
             $endPos = $expr->right->getStartFilePos();
 
@@ -109,15 +122,32 @@ class StrictEqualityHooks implements AfterExpressionAnalysisInterface
             return true;
         }
 
-        if ($first_type instanceof Atomic\TArray && $second_type instanceof Atomic\TArray) {
+        // insane comparisons
+        if ($first_type instanceof Atomic\TFalse && $second_type instanceof Atomic\TNonFalsyString) {
             return true;
         }
 
-        if ($first_type instanceof Atomic\TKeyedArray && $second_type instanceof Atomic\TKeyedArray) {
-            return true;
+        if ($first_type instanceof Atomic\TFalse && $second_type instanceof Atomic\TLiteralString) {
+            if ((bool) $second_type->value === true) {
+                return true;
+            }
         }
 
-        if ($first_type instanceof Atomic\TKeyedArray && $second_type instanceof Atomic\TArray) {
+        if ($first_type instanceof Atomic\TTrue && $second_type instanceof Atomic\TLiteralString) {
+            if ((bool) $second_type->value === false) {
+                return true;
+            }
+        }
+
+        // array/objects are somewhat safe to compare against strings
+        if (self::isTooComplicatedType($first_type) && $second_type instanceof Atomic\TString) {
+            return true;
+        } elseif (self::isTooComplicatedType($first_type)) {
+            return false;
+        }
+
+        // generic same or parent class
+        if ($first_type instanceof $second_type) {
             return true;
         }
 
@@ -126,33 +156,181 @@ class StrictEqualityHooks implements AfterExpressionAnalysisInterface
 
     private static function isNotEqualOrdered(Atomic $first_type, Atomic $second_type): bool
     {
-        if ($first_type instanceof Atomic\TString && $second_type instanceof Atomic\TString) {
-            // oh god, I hate this: https://3v4l.org/O7RXC
-            return true;
+        // identical at the moment
+        return self::isEqualOrdered($first_type, $second_type);
+    }
+
+    private static function isUnionCompatibleType(array $left_type_atomics, array $right_type_atomics, string $expr_class): bool {
+        if ($expr_class === Equal::class) {
+            //This is just a trick to avoid handling every way
+            return self::isUnionEqualOrdered($left_type_atomics, $right_type_atomics) || self::isUnionEqualOrdered($right_type_atomics, $left_type_atomics) ||
+                   self::isUnionStringEqualOrdered($left_type_atomics, $right_type_atomics) || self::isUnionStringEqualOrdered($right_type_atomics, $left_type_atomics);
+        } else {
+            return self::isUnionNotEqualOrdered($left_type_atomics, $right_type_atomics) || self::isUnionNotEqualOrdered($right_type_atomics, $left_type_atomics) ||
+                   self::isUnionStringNotEqualOrdered($left_type_atomics, $right_type_atomics) || self::isUnionStringNotEqualOrdered($right_type_atomics, $left_type_atomics);
+        }
+    }
+
+    private static function isUnionStringEqualOrdered(array $first_types, array $second_types): bool
+    {
+        $generic_string = false;
+        $non_empty_string = false;
+        $literal_string = false;
+        foreach ($first_types as $atomic_type) {
+            if ($generic_string === false && $non_empty_string === false && $literal_string === false && $atomic_type instanceof Atomic\TNonFalsyString) {
+                $with_false = true;
+                $with_true = false;
+                $with_null = true;
+                continue;
+            }
+
+            if ($generic_string === false && $non_empty_string === false && $atomic_type instanceof Atomic\TLiteralString) {
+                $literal_string = true;
+                if ((!isset($with_false) || $with_false === true) && (bool) $atomic_type->value === true) {
+                    $with_false = true;
+                    $with_true = false;
+                } elseif ((!isset($with_false) || $with_false === false)) {
+                    $with_false = false;
+                    $with_true = true;
+                } else {
+                    $with_false = false;
+                    $with_true = false;
+                }
+
+                if ((!isset($with_null) || $with_null === true) && $atomic_type->value !== '') {
+                    $with_null = true;
+                } else {
+                    $with_null = false;
+                }
+
+                continue;
+            }
+
+            if ($generic_string === false && $atomic_type instanceof Atomic\TNonEmptyString) {
+                $non_empty_string = true;
+                $with_false = false;
+                $with_true = false;
+                $with_null = true;
+                continue;
+            }
+
+            if ($atomic_type instanceof Atomic\TString) {
+                $generic_string = true;
+                $with_false = false;
+                $with_true = false;
+                $with_null = false;
+                continue;
+            }
+
+            return false;
         }
 
-        if ($first_type instanceof Atomic\TInt && $second_type instanceof Atomic\TInt) {
-            return true;
+        foreach ($second_types as $atomic_type) {
+            if ($atomic_type instanceof Atomic\TString) {
+                continue;
+            }
+
+            if ($with_true === true && $atomic_type instanceof Atomic\TTrue) {
+                continue;
+            }
+
+            if ($with_false === true && $atomic_type instanceof Atomic\TFalse) {
+                continue;
+            }
+
+            if ($with_null === true && $atomic_type instanceof Atomic\TNull) {
+                continue;
+            }
+
+            // array/objects are somewhat safe to compare against strings
+            if (self::isTooComplicatedType($atomic_type)) {
+                continue;
+            }
+
+            if ($atomic_type instanceof Atomic\TCallable) {
+                continue;
+            }
+
+            if ($atomic_type instanceof Atomic\TResource) {
+                continue;
+            }
+
+            if ($atomic_type instanceof Atomic\TClosedResource) {
+                continue;
+            }
+
+            return false;
         }
 
-        if ($first_type instanceof Atomic\TFloat && $second_type instanceof Atomic\TFloat) {
-            return true;
+        return true;
+    }
+
+    private static function isUnionStringNotEqualOrdered(array $first_types, array $second_types): bool
+    {
+        // identical at the moment
+        return self::isUnionStringEqualOrdered($first_types, $second_types);
+    }
+
+    private static function isUnionEqualOrdered(array $first_types, array $second_types): bool {
+        $top_level_class = false;
+        foreach ($first_types as $atomic_type) {
+            if ($top_level_class === false) {
+                $top_level_class = $atomic_type;
+                continue;
+            }
+
+            if ($atomic_type instanceof $top_level_class) {
+                continue;
+            }
+
+            if ($top_level_class instanceof $atomic_type) {
+                $top_level_class = $atomic_type;
+                continue;
+            }
+
+            return false;
         }
 
-        if ($first_type instanceof Atomic\TBool && $second_type instanceof Atomic\TBool) {
-            return true;
+        if (self::isTooComplicatedType($top_level_class)) {
+            return false;
         }
 
-        if ($first_type instanceof Atomic\TArray && $second_type instanceof Atomic\TArray) {
-            return true;
+        foreach ($second_types as $atomic_type) {
+            if ($atomic_type instanceof $top_level_class) {
+                continue;
+            }
+
+            if ($top_level_class instanceof $atomic_type) {
+                $top_level_class = $atomic_type;
+                continue;
+            }
+
+            return false;
         }
 
-        if ($first_type instanceof Atomic\TKeyedArray && $second_type instanceof Atomic\TKeyedArray) {
-            return true;
-        }
+        return true;
+    }
 
-        if ($first_type instanceof Atomic\TKeyedArray && $second_type instanceof Atomic\TArray) {
-            return true;
+    private static function isUnionNotEqualOrdered(array $first_types, array $second_types): bool
+    {
+        // identical at the moment
+        return self::isUnionEqualOrdered($first_types, $second_types);
+    }
+
+    private static function isTooComplicatedType(Atomic $type) {
+        $too_complicated_types = array(
+            Atomic\TKeyedArray::class,
+            Atomic\TArray::class,
+            Atomic\TList::class,
+            Atomic\TIterable::class,
+            Atomic\TNamedObject::class,
+            Atomic\TObject::class,
+        );
+
+        foreach ($too_complicated_types as $compare) {
+            if ($type instanceof $compare || $compare instanceof $type) {
+                return true;
+            }
         }
 
         return false;
